@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "prototype.fullname" . }}
+  labels:
+    {{- include "prototype.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "prototype.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "prototype.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "prototype.serviceAccountName" . }}
+      volumes:
+        - name: {{ .Values.secrets.provider }}
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ .Values.secrets.provider }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+          - name: DB_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name:  {{ .Values.secrets.name }}
+                key: db_username
+          - name: DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name:  {{ .Values.secrets.name }}
+                key: db_password
+          - name: DB_URL
+            valueFrom:
+              secretKeyRef:
+                name:  {{ .Values.secrets.name }}
+                key: db_url
+          - name: DATABASE_URL
+            valueFrom:
+              secretKeyRef:
+                name:  {{ .Values.secrets.name }}
+                key: database_url
+          - name: APP_SECRETS
+            valueFrom:
+              secretKeyRef:
+                name:  {{ .Values.secrets.name }}
+                key: app_secrets
+          - name: "STUDIO_APP_ENV"
+            value: {{ .Values.env.STUDIO_APP_ENV | upper | quote }}
+          - name: "CORS_URL"
+            value: {{ .Values.env.CORS_URL }}
+          - name: "NODE_ENV"
+            value: {{ .Values.env.NODE_ENV | upper | quote }}
+          - name: "OAUTH_IDP_AUTH_END_POINT"
+            value: {{ .Values.env.OAUTH_IDP_AUTH_END_POINT }}
+          - name: "OAUTH_IDP_CLIENT_ID"
+            value: {{ .Values.env.OAUTH_IDP_CLIENT_ID }}
+          - name: "OAUTH_IDP_END_SESSION_END_POINT"
+            value: {{ .Values.env.OAUTH_IDP_END_SESSION_END_POINT }}
+          - name: "OAUTH_IDP_HOST"
+            value: {{ .Values.env.OAUTH_IDP_HOST }}
+          - name: "OAUTH_IDP_ISSUER"
+            value: {{ .Values.env.OAUTH_IDP_ISSUER }}
+          - name: "OAUTH_IDP_TOKEN_END_POINT"
+            value: {{ .Values.env.OAUTH_IDP_TOKEN_END_POINT }}
+          #- name: "SWAGGER_DOCS"
+          #  value: {{ .Values.env.SWAGGER_DOCS }}
+          - name: "USER_POOL_ID"
+            value: {{ .Values.env.USER_POOL_ID }}
+          - name: "OAUTH_REDIRECTURI"
+            value: {{ .Values.env.OAUTH_REDIRECTURI }}
+          - name: "CERT_URL"
+            value: {{ .Values.env.CERT_URL }}
+          - name: "OAUTH_IDP_CLIENT_ROLE"
+            value: {{ .Values.env.OAUTH_IDP_CLIENT_ROLE }}
+          ports:
+          - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.service.health }}
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            successThreshold: 1
+          volumeMounts:
+            - name:  {{ .Values.secrets.provider }} 
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,83 @@
+name: quickstart-springboot-template build & deploy
+
+on:
+  push:
+  pull_request:
+    types: [opened]
+
+jobs:
+  build:
+    runs-on: self-hosted-ubuntu-cdhb
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install JAVA JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: "oracle"
+          java-version: "17"
+          cache: "gradle"
+
+      - name: Cache Gradle Dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.gradle
+          key: v1-dependencies-${{ hashFiles('**/build.gradle') }}
+          restore-keys: |
+            v1-dependencies-
+
+      - name: Set Gradle Properties
+        run: |
+          echo "repository_url=${{ secrets.JFROG_ARTIFACTORY_URL }}" >> gradle.properties
+          echo "repousername=${{ secrets.ARTIFACTORY_USER }}" >> gradle.properties
+          echo "repopassword=${{ secrets.ARTIFACTORY_TOKEN }}" >> gradle.properties
+
+      - name: Download and Cache Dependencies
+        run: ./gradlew --console=plain dependencies
+
+      - name: Run JUnit Tests
+        run: ./gradlew --console=plain test
+
+      - name: Build Application
+        run: ./gradlew --console=plain assemble
+
+      # - name: Persist specified paths to workspace
+      #   uses: actions/upload-artifact@v3.1.0
+      #   with:
+      #     name: .
+      #     path: ${{ github.workspace }}/build/libs
+
+  deploy_to_dev:
+    if: startsWith(github.ref, 'refs/heads/develop') || startsWith(github.ref, 'refs/tags/develop') # eg: develop to run scan for develop branch
+    uses: ./.github/workflows/deployment.yml
+    needs: build
+    with:
+      environment: "dev"
+    secrets: inherit
+
+  checkmarx_scan:
+    if: startsWith(github.ref, 'refs/heads/sast/')
+    needs: build
+    uses: CognizantCodeHub/QuickStart-Security-Scans-Workflows/.github/workflows/checkmarx_scan.yml@main
+    with:
+      ProjectName: ${{ github.event.repository.name }}
+    secrets: inherit
+
+  blackduck_scan:
+    if: startsWith(github.ref, 'refs/heads/oss/')
+    needs: build
+    uses: CognizantCodeHub/QuickStart-Security-Scans-Workflows/.github/workflows/springboot_gradle_blackduck_scan.yml@main
+    with:
+      ProjectName: ${{ github.event.repository.name }}
+      JavaVersion: "17"
+    secrets: inherit
+
+  sonar_scan:
+    if: startsWith(github.ref, 'refs/heads/sonar/') || startsWith(github.ref, 'refs/heads/develop')
+    needs: build
+    uses: CognizantCodeHub/QuickStart-Security-Scans-Workflows/.github/workflows/springboot_gradle_sonar_scan.yml@main
+    with:
+      ProjectName: ${{ github.event.repository.name }}
+      JavaVersion: "17"
+    secrets: inherit

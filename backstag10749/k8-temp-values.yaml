@@ -1,0 +1,53 @@
+image:
+  repository: codehub-docker.jfrog.io/$CIRCLE_PROJECT_REPONAME/$ASSET_DOCKER_IMAGE_NAME
+
+fullnameOverride: ${ASSET_CODE}
+
+labels:
+  name: ${ASSET_CODE}
+  cluster: ${DEPLOY_EKS_CLUSTER}
+  namespace: ${EKS_NAMESPACE}
+  env: ${ENV}
+
+secrets:
+  secretname: ${ENV}-cqs-${ASSET_CODE}-secret
+  provider: ${ASSET_CODE}-secret
+  name: ${ASSET_CODE}-k8-secret
+
+serviceAccount:
+  create: true
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::${AWS_ACCOUNT_ID}:role/${ENV}-cqs-${ASSET_CODE}-role
+  name: ${ENV}-cqs-${ASSET_CODE}-sa
+
+service:
+  name: ${ASSET_CODE}
+  health: /actuator/health
+
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: nginx
+  hosts:
+    - host: api-assets.${ENV}.sandbox.quickstart.cognizantproducts.com
+      http:
+      paths:
+        - path: /${ASSET_CODE}
+          backend:
+            serviceName: ${ASSET_CODE}
+            servicePort: 80
+
+env:
+  STUDIO_APP_ENV: ${ENV}
+  NODE_ENV: ${ENV}
+  CORS_URL: ${CORS_URL}
+  USER_POOL_ID: ${USER_POOL_ID}
+  OAUTH_IDP_HOST: ${OAUTH_IDP_HOST}
+  OAUTH_IDP_CLIENT_ID: ${OAUTH_IDP_CLIENT_ID}
+  OAUTH_REDIRECTURI: ${CORS_URL}
+  OAUTH_IDP_ISSUER: ${OAUTH_IDP_ISSUER}
+  OAUTH_IDP_AUTH_END_POINT: ${OAUTH_IDP_AUTH_END_POINT}
+  OAUTH_IDP_TOKEN_END_POINT: ${OAUTH_IDP_TOKEN_END_POINT}
+  OAUTH_IDP_END_SESSION_END_POINT: ${OAUTH_IDP_END_SESSION_END_POINT}
+  OAUTH_IDP_CLIENT_ROLE: ${OAUTH_IDP_CLIENT_ROLE}
+  CERT_URL: ${CERT_URL}

@@ -1,0 +1,38 @@
+replicaCount: 2
+
+image:
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets:
+  - name: registrycredscodehub
+nameOverride: ""
+fullnameOverride: ""
+
+podAnnotations: {}
+podSecurityContext: {}
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+
+service:
+  port: 80
+  targetPort: 8080
+  type: ClusterIP
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1028Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

@@ -1,0 +1,104 @@
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    environment: ${{ inputs.environment }}
+    runs-on: self-hosted-ubuntu-cdhb
+    env:
+      AWS_EC2_METADATA_DISABLED: true
+      ARTIFACTORY_USER: ${{ secrets.ARTIFACTORY_USER }}
+      ARTIFACTORY_TOKEN: ${{ secrets.ARTIFACTORY_TOKEN }}
+      ARTIFACTORY_REPOSITORY_URL: ${{ secrets.ARTIFACTORY_REPOSITORY_URL }}
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      QUICKSTART_PROTOTYPE_SECRETS_AWS_ACCESS_KEY_ID_DEV_QA: ${{ secrets.QUICKSTART_PROTOTYPE_SECRETS_AWS_ACCESS_KEY_ID_DEV_QA }}
+      QUICKSTART_PROTOTYPE_SECRETS_AWS_SECRET_ACCESS_KEY_DEV_QA: ${{ secrets.QUICKSTART_PROTOTYPE_SECRETS_AWS_SECRET_ACCESS_KEY_DEV_QA }}
+      QUICKSTART_PROTOTYPE_SECRETS_AWS_ACCESS_KEY_ID_STAGE_PROD: ${{ secrets.QUICKSTART_PROTOTYPE_SECRETS_AWS_ACCESS_KEY_ID_STAGE_PROD }}
+      QUICKSTART_PROTOTYPE_SECRETS_AWS_SECRET_ACCESS_KEY_STAGE_PROD: ${{ secrets.QUICKSTART_PROTOTYPE_SECRETS_AWS_SECRET_ACCESS_KEY_STAGE_PROD }}
+      DEPLOY_EKS_CLUSTER: ${{ vars.DEPLOY_EKS_CLUSTER }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EKS_NAMESPACE: ${{ vars.EKS_NAMESPACE }}
+      ASSET_CODE: ${{ vars.ASSET_CODE }}
+      DEPLOY_TO_EKS: ${{ vars.DEPLOY_TO_EKS }}
+      DEPLOY_EKS_TEARDOWN: ${{ vars.DEPLOY_EKS_TEARDOWN }}
+      BUILD_JFROG_IMAGE: ${{ vars.BUILD_JFROG_IMAGE }}
+      ASSET_DOCKER_IMAGE_NAME: ${{ vars.ASSET_DOCKER_IMAGE_NAME }}
+      CIRCLE_PROJECT_REPONAME: ${{ github.event.repository.name }}
+      ENV: ${{ vars.ENV }}
+      CORS_URL: ${{ vars.CORS_URL }}
+      USER_POOL_ID: ${{ vars.USER_POOL_ID }}
+      OAUTH_IDP_HOST: ${{ vars.OAUTH_IDP_HOST }}
+      OAUTH_IDP_CLIENT_ID: ${{ vars.OAUTH_IDP_CLIENT_ID }}
+      OAUTH_REDIRECTURI: ${{ vars.CORS_URL }}
+      OAUTH_IDP_ISSUER: ${{ vars.OAUTH_IDP_ISSUER }}
+      OAUTH_IDP_AUTH_END_POINT: ${{ vars.OAUTH_IDP_AUTH_END_POINT }}
+      OAUTH_IDP_TOKEN_END_POINT: ${{ vars.OAUTH_IDP_TOKEN_END_POINT }}
+      OAUTH_IDP_END_SESSION_END_POINT: ${{ vars.OAUTH_IDP_END_SESSION_END_POINT }}
+      OAUTH_IDP_CLIENT_ROLE: ${{ vars.OAUTH_IDP_CLIENT_ROLE }}
+      CERT_URL: ${{ vars.CERT_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check and kill apt processes if running
+        run: |
+          if pgrep apt; then
+            sudo killall apt apt-get
+          else
+            echo "No apt or apt-get processes found. Skipping this step."
+          fi
+
+      - name: Install AWS Cli
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --update
+
+      - name: Setup Dependencies
+        run: ./.github/workflows/setup_dependencies.sh ${{ env.ENV }}
+
+      - name: Install and configure kubectl
+        run: sudo curl -L https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl -o /usr/local/bin/kubectl && sudo chmod +x /usr/local/bin/kubectl
+
+      - name: Install and configure aws-iam-authenticator
+        run: |
+          curl -o aws-iam-authenticator https://amazon-eks.s3-us-west-2.amazonaws.com/1.10.3/2018-07-26/bin/linux/amd64/aws-iam-authenticator && sudo chmod +x ./aws-iam-authenticator && sudo cp ./aws-iam-authenticator /bin/aws-iam-authenticator
+
+      - name: Get kubeconfig file
+        run: aws sts get-caller-identity ; echo "export KUBECONFIG=$KUBECONFIG:~/.kube/config >> ~/.bashrc" && aws eks --region ${{ env.AWS_REGION }} update-kubeconfig --name ${{ env.DEPLOY_EKS_CLUSTER }}
+
+      - name: Install and configure Helm
+        run: curl -L https://git.io/get_helm.sh | bash -s -- --version v3.8.2
+
+      - name: Install helm plugin mapkubeapis
+        run: |
+          PLUGIN_NAME="mapkubeapis"
+          PLUGIN_REPO="https://github.com/helm/helm-mapkubeapis"
+          #Check if plugin is installed
+          if helm plugin list | grep -q "$PLUGIN_NAME"; then
+            helm plugin update $PLUGIN_NAME
+            echo "Plugin $PLUGIN_NAME updated "
+          else
+            helm plugin install $PLUGIN_REPO
+          fi
+
+      - name: Deploy to EKS
+        run: |
+          echo "repository_url=${{ secrets.JFROG_ARTIFACTORY_URL }}" >> gradle.properties
+          echo "repousername=${{ secrets.ARTIFACTORY_USER }}" >> gradle.properties
+          echo "repopassword=${{ secrets.ARTIFACTORY_TOKEN }}" >> gradle.properties
+          .github/workflows/deploy.sh
+
+      # - name: Persist specified paths to workspace
+      #   uses: actions/upload-artifact@v3.1.0
+      #   with:
+      #     name: workspace
+      #     path: ${{ github.workspace }}/workspace/env_exports

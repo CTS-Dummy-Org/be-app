@@ -1,0 +1,17 @@
+<configuration>
+    <springProperty scope="context" name="serviceName" source="info.app.name" defaultValue="springboot-helloworld-api"/>
+    <springProperty scope="context" name="serviceVersion" source="info.app.version" defaultValue="0.0.0"/>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%cyan(%d{dd-MM-yyyy HH:mm:ss.SSS})  ${serviceName} ${serviceVersion} %highlight(%level)
+                %magenta([%thread]) %logger{35} - %replace(%msg){"password[&amp;!@#$%^*()_+a-zA-Z0-9_=~:;./|\\/]*",
+                "password=*****"}%n
+            </pattern>
+            <outputPatternAsHeader>true</outputPatternAsHeader>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+</configuration>
